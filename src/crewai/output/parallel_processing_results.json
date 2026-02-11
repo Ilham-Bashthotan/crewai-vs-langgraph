@@ -1,0 +1,11 @@
+{
+  "text_processing": {
+    "raw": "{\n  \"source\": \"This is a sample text with special chars!!! and noise...\",\n  \"content\": \"This is a sample text with special chars and noise\",\n  \"confidence\": 0.95,\n  \"metadata\": {\n    \"word_count\": 100\n  }\n}"
+  },
+  "audio_processing": {
+    "raw": "{\n  \"source\": \"audio\",\n  \"content\": \"transcribed text\",\n  \"confidence\": 0.92,\n  \"metadata\": {\n    \"duration\": \"30s\"\n  }\n}"
+  },
+  "feedback_analysis": {
+    "raw": "{\n  \"text_quality\": \"Good - clean and coherent\",\n  \"audio_quality\": \"Excellent - accurate transcription\",\n  \"recommendations\": [\n    \"Ensure to verify any special characters in the text for clarity\",\n    \"Check the audio transcription for any inconsistencies or noise artifacts\"\n  ],\n  \"final_score\": 8.5\n}"
+  }
+}

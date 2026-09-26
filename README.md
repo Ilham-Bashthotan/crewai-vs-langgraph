@@ -1,28 +1,25 @@
-# Multi-Agent Automated Pseudocode Scoring & Feedback System: CrewAI vs LangGraph
+# Multi-Agent Pseudocode Scoring & Feedback: CrewAI vs LangGraph
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![CrewAI](https://img.shields.io/badge/Orchestration-CrewAI-orange.svg)](https://www.crewai.com/)
 [![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-purple.svg)](https://www.langchain.com/langgraph)
-[![Ollama](https://img.shields.io/badge/Local%20LLM-Ollama%20(Llama%203.1)-black.svg)](https://ollama.ai/)
+[![Ollama](https://img.shields.io/badge/Local%20LLM-Ollama-black.svg)](https://ollama.com/)
 
-An experimental research and engineering benchmark comparing **CrewAI** and **LangGraph** in orchestrating multi-agent LLM workflows. The pipeline automates the evaluation of student pseudocode assignments, combining syntax auditing, rubric-based score deduction, and pedagogy-grounded misconception detection.
+Research project on **automated assessment of student pseudocode** using multi-agent LLM workflows. A team of AI agents checks a submission's syntax and style, detects programming misconceptions, and produces a score with written feedback. The repository also explores **CrewAI** and **LangGraph** as orchestration frameworks for this kind of pipeline.
 
----
-
-## 🎯 Research Objective & Background
-
-Grading introductory programming and pseudocode assignments manually is repetitive and labor-intensive for university instructors. Standard automated unit-testing cannot evaluate pseudocode or uncompiled algorithms, and monolithic LLM prompts frequently hallucinate grading rubrics or deliver unstructured commentary.
-
-This project designs a **modular multi-agent pipeline** that breaks grading down into discrete cognitive stages:
-1. **Syntax & Style Compliance**: Validating variable dictionaries, keywords, and structural conventions against standard textbook specifications.
-2. **Algorithmic Logic & Misconception Analysis**: Verifying loop invariants, conditional branching, and identifying specific cognitive pitfalls (e.g., *While Demon*, *IfWhile*, *Intentional Bug*).
-3. **Supervisor Aggregation & Scoring**: Synthesizing audit findings into deterministic, Pydantic-validated JSON containing final numerical scores, deduction line items, and actionable student remediation.
-
-Both **CrewAI** and **LangGraph** were implemented to compare their orchestration paradigms, state propagation, and output determinism.
+> **Status:** work in progress. The scoring pipeline is implemented in CrewAI. The LangGraph notebooks are currently orchestration experiments (supervisor pattern and iteration limits) and do not yet implement the scoring pipeline.
 
 ---
 
-## 🤖 Multi-Agent Architecture
+## Background
+
+Grading introductory pseudocode by hand is repetitive, and unit tests cannot run pseudocode. A single large LLM prompt tends to mix up rubric rules and return unstructured comments. This project splits grading into separate steps handled by specialized agents, each grounded in its own reference document, and forces the final result into a validated schema.
+
+---
+
+## Scoring Pipeline (CrewAI)
+
+The pipeline runs three agents **sequentially** (`Process.sequential`) on a local model (`ollama/llama3.1:8b`, temperature 0):
 
 ```
                     +---------------------------+
@@ -32,158 +29,134 @@ Both **CrewAI** and **LangGraph** were implemented to compare their orchestratio
                                   |
                                   v
       +-------------------------------------------------------+
-      |               Parallel / Sub-Agent Audit              |
+      |        Sub-Agent Audit (run sequentially, 1 → 2)      |
       |                                                       |
-      |  +---------------------------+   +-----------------+  |
-      |  |   Style & Syntax Auditor  |   | Logic Analyst   |  |
-      |  |   - Dictionary check      |   | - Flow correctness |
-      |  |   - Convention validation |   | - Misconception |  |
-      |  |   - Syntax deductions     |   |   taxonomy match|  |
-      |  +-------------+-------------+   +--------+--------+  |
-      |                \                         /            |
-      +-----------------\-----------------------/-------------+
-                         v                     v
+      |  +---------------------------+  +------------------+  |
+      |  | 1. Style & Syntax Auditor |  | 2. Logic Analyst |  |
+      |  |  - Dictionary check       |  |  - Flow          |  |
+      |  |  - Convention validation  |  |    correctness   |  |
+      |  |  - Syntax deductions      |  |  - Misconception |  |
+      |  |                           |  |    taxonomy match|  |
+      |  +-------------+-------------+  +--------+---------+  |
+      |                \                        /             |
+      +-----------------\----------------------/--------------+
+                         v                    v
                     +-----------------------------+
-                    |     Scoring Supervisor      |
-                    |  - Validates deductions     |
-                    |  - Applies strict rubric    |
+                    |   3. Scoring Supervisor     |
+                    |  - Combines both reports    |
+                    |  - Removes duplicate        |
+                    |    penalties                |
                     |  - Outputs Pydantic JSON    |
+                    +--------------+--------------+
+                                   |
+                                   v
                     +-----------------------------+
-                                  |
-                                  v
-                    +-----------------------------+
-                    | Final Report & Actionable   |
-                    | Student Remediation         |
+                    |  AssessmentResult: score,   |
+                    |  correctness, summary,      |
+                    |  misconceptions found       |
                     +-----------------------------+
 ```
 
-### Agent Roles & Responsibilities
-
-| Agent Role | Goal & Specialization | Knowledge Base / Grounding |
+| Agent | Responsibility | Grounding |
 |---|---|---|
-| **Style & Syntax Auditor** | Validates structural layout, variable dictionary declarations, type assignments, and reserved keywords. Returns structured JSON deductions without prose. | Pseudocode convention specification (`doc/Pseudocode Dasar.md`) |
-| **Logic & Misconception Analyst** | Analyzes algorithmic behavior and pinpoints cognitive misconceptions (e.g., *While Demon*, *IfWhile*, *Drop Through Error*, *Nesting Ignorance*). | Formal misconception taxonomy (`doc/List of misconceptions.md`) |
-| **Scoring Supervisor** | Aggregates sub-agent evaluations, ensures no hallucinations or duplicate penalties exist, calculates numerical score (`Score = Max - Total Penalties`), and generates constructive guidance. | Institutional rubric (`SCORING_RUBRIC` schema) |
+| **Style & Syntax Auditor** | Structure, variable declarations, assignment operator (`<-`), reserved keywords | `doc/Pseudocode dan Golang Dasar.md` |
+| **Logic & Misconception Analyst** | Control-flow correctness and misconceptions such as *While Demon (WD)*, *IfWhile*, *Drop Through (DT)*, *Ignore Nesting (IN1/IN2)* | `doc/List of misconceptions.md` |
+| **Scoring Supervisor** | Aggregates the two reports and produces the final structured result | Task outputs of the two agents above |
 
----
+The final task uses `output_pydantic=AssessmentResult`:
 
-## 🔬 Framework Comparison: CrewAI vs. LangGraph
-
-| Dimension | CrewAI Implementation | LangGraph Implementation |
-|---|---|---|
-| **Orchestration Model** | Role-based agents, hierarchical crews, and sequential tasks with native agent delegation. | Explicit directed acyclic/cyclic graphs (`StateGraph`) with typed states (`TypedDict`). |
-| **State Management** | Implicit inter-agent context sharing via task outputs and crew memory. | Explicit, centralized state schema with fine-grained delta reducers (`operator.add`). |
-| **Control Flow & Guardrails** | High-level iteration limits (`max_iter`) and role prompt constraints. | Granular conditional branching, routing nodes, and cycle limits. |
-| **Structured Output** | JSON output enforcement via pydantic schemas and formatting system prompts. | Native integration with `ChatOllama` / `ChatOpenAI` structured tool-calling nodes. |
-| **Best Suited For** | Rapid prototyping, autonomous agent personas, role-driven delegation workflows. | Complex deterministic branching, fine-grained state manipulation, mission-critical pipelines. |
-
----
-
-## 📁 Repository Structure
-
-```
-├── doc/
-│   ├── List of misconceptions.md         # Ground truth taxonomy of student programming misconceptions
-│   ├── Pseudocode Dasar.md               # Standard pseudocode formatting guidelines & Golang mapping
-│   ├── Pseudocode dan Golang Dasar.md
-│   └── *.html                            # Visual workflow documentation and process diagrams
-├── src/
-│   ├── crewai/
-│   │   ├── scoring/                      # Iterative implementations of CrewAI scoring pipelines (v1–v5)
-│   │   ├── config/                       # YAML definitions for agent roles and tasks
-│   │   ├── Parallel Crews.ipynb          # Concurrent execution tests
-│   │   └── CrewAI Hierarchical Process.ipynb
-│   └── langgraph/
-│       ├── config/                       # LangGraph agent configurations
-│       ├── Langgraph Hierarchical Process.ipynb
-│       └── Langgraph Batasan Iterasi.ipynb
-├── output/
-│   └── parallel_processing_results.json  # Sample pipeline evaluation outputs
-├── main.py                               # CLI entrypoint
-├── pyproject.toml                        # Project dependencies managed via uv
-└── uv.lock
+```python
+class AssessmentResult(BaseModel):
+    score: int              # final score, 0–100
+    correct: bool           # whether the logic is correct
+    summary: str            # narrative summary of the assessment
+    misconceptions: List[str]  # misconceptions found (from the reference list)
+    pseudocode: str         # the student's original pseudocode
 ```
 
----
+### Example output
 
-## 🚀 Getting Started
-
-### 1. Prerequisites
-- Python `>= 3.11`
-- [`uv`](https://github.com/astral-sh/uv) (recommended) or `pip`
-- [Ollama](https://ollama.ai/) running locally with `llama3.1:8b` (or API keys for cloud LLM providers)
-
-```bash
-# Pull the evaluation model
-ollama pull llama3.1:8b
-```
-
-### 2. Installation
-Clone the repository and install dependencies:
-
-```bash
-git clone https://github.com/Ilham-Bashthotan/crewai-vs-langgraph.git
-cd crewai-vs-langgraph
-
-# Install via uv
-uv sync
-
-# Or install via pip
-pip install -r pyproject.toml
-```
-
-### 3. Environment Configuration
-Copy the environment template:
-
-```bash
-cp .env.example .env
-```
-
-Configure your local model settings or provider credentials in `.env`:
-```env
-OLLAMA_BASE_URL="http://localhost:11434"
-DEFAULT_MODEL="ollama/llama3.1:8b"
-```
-
-### 4. Running the Pipelines
-Explore the end-to-end multi-agent scoring workflows inside the interactive Jupyter notebooks:
-- **CrewAI Pipeline**: Open `src/crewai/scoring/CrewAI Scoring(5).ipynb`
-- **LangGraph Pipeline**: Open `src/langgraph/Langgraph Hierarchical Process.ipynb`
-
----
-
-## 📊 Sample Output Schema
-
-Both frameworks produce structured JSON conforming to the `AssessmentResult` schema:
+Actual output from `src/crewai/scoring/CrewAI Scoring(5).ipynb`:
 
 ```json
 {
-  "score": 12,
-  "max_score": 20,
+  "score": 82,
   "correct": false,
-  "summary": "Algorithm correctly declares variables but inverts the primary conditional statement.",
-  "style_violations": [],
-  "misconceptions_detected": [
-    {
-      "code": "WD",
-      "name": "While Demon / Inverted Logic",
-      "penalty": 8,
-      "line": 6,
-      "details": "Conditional statement checks 'n < 75' for pass condition instead of 'n >= 75'."
-    }
-  ],
-  "recommendations": [
-    "Recheck the problem narrative: passing condition requires a score >= 75.",
-    "Ensure comparison operators align with the desired Boolean outcome."
-  ]
+  "summary": "The student's pseudocode contains style violations and logic misconceptions. The while loop uses a premature break pattern, and there are assignment syntax errors and operator usage errors.",
+  "misconceptions": ["While demon (WD)"],
+  "pseudocode": "if x > 5 then\n  y = 10\nelse\n  z = 20\nend if\nwhile x < 10 do\n  x = x + 1\n  if x == 7 then break end if\n  print(x)\nend while"
 }
 ```
 
 ---
 
-## 👤 Author
-**Ilham Bashthotan**  
-Informatics Undergraduate, Telkom University  
-- 💼 [LinkedIn](https://www.linkedin.com/in/ilham-bashthotan)
-- 💻 [GitHub](https://github.com/Ilham-Bashthotan)
-- 🎮 [itch.io](https://ilham-bashthotan.itch.io)
+## CrewAI vs LangGraph: What Is Explored
+
+| | CrewAI (`src/crewai/`) | LangGraph (`src/langgraph/`) |
+|---|---|---|
+| **Orchestration model** | Role-based agents and tasks in a `Crew` (sequential and hierarchical processes) | Explicit `StateGraph` with a typed state (`TypedDict`) |
+| **State passing** | Implicit, through task `context` | Explicit shared state with reducers (`operator.add`) |
+| **Loop control** | `max_iter` per agent/task | Iteration limits enforced in the graph |
+| **Structured output** | `output_pydantic` on the final task | Not yet implemented for scoring |
+| **Notebooks** | Scoring pipeline (v1–v5), hierarchical process, parallel crews, tools, iteration limits | Supervisor/hierarchical process, iteration limits, content-planner example |
+| **Model used** | `ollama/llama3.1:8b` | `qwen3:0.6b` (via `ChatOllama`) |
+
+---
+
+## Repository Structure
+
+```
+├── doc/
+│   ├── List of misconceptions.md        # Misconception & error taxonomy used by the logic agent
+│   ├── Pseudocode Dasar.md              # Pseudocode conventions
+│   ├── Pseudocode dan Golang Dasar.md   # Pseudocode ↔ Go reference used by the style agent
+│   └── *.html / *.pdf                   # Exported notebooks and course material
+├── src/
+│   ├── crewai/
+│   │   ├── scoring/                     # Scoring pipeline iterations (latest: CrewAI Scoring(5).ipynb)
+│   │   ├── config/                      # YAML agent/task definitions (content-planner example)
+│   │   └── *.ipynb                      # Hierarchical process, parallel crews, tools, iteration limits
+│   └── langgraph/
+│       ├── Langgraph Hierarchical Process.ipynb
+│       ├── Langgraph Batasan Iterasi.ipynb
+│       └── Langgraph Sosmed Content Planner.ipynb
+├── pyproject.toml                       # Dependencies (managed with uv)
+└── uv.lock
+```
+
+---
+
+## Getting Started
+
+**Requirements:** Python 3.11+, [uv](https://github.com/astral-sh/uv), and [Ollama](https://ollama.com/) running locally.
+
+```bash
+git clone https://github.com/Ilham-Bashthotan/crewai-vs-langgraph.git
+cd crewai-vs-langgraph
+uv sync
+
+ollama pull llama3.1:8b      # CrewAI scoring pipeline
+ollama pull qwen3:0.6b       # LangGraph experiments
+```
+
+Then open the notebooks with Jupyter:
+
+- Scoring pipeline: `src/crewai/scoring/CrewAI Scoring(5).ipynb`
+- LangGraph experiments: `src/langgraph/Langgraph Hierarchical Process.ipynb`
+
+> **Note:** the scoring notebook reads the reference documents from an absolute path. Change it to `doc/Pseudocode dan Golang Dasar.md` and `doc/List of misconceptions.md` before running.
+
+---
+
+## Roadmap
+
+- [ ] Implement the same three-agent scoring pipeline in LangGraph
+- [ ] Evaluate both pipelines on the same set of student submissions and compare scores with instructor grading
+- [ ] Move the pipeline from notebooks into a runnable script (`main.py`)
+
+---
+
+## Author
+
+**Ilham Bashthotan** · Informatics, Telkom University
+[LinkedIn](https://www.linkedin.com/in/ilham-bashthotan) · [GitHub](https://github.com/Ilham-Bashthotan) · [itch.io](https://ilham-bashthotan.itch.io)

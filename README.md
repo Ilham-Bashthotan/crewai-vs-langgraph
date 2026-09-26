@@ -134,6 +134,7 @@ Actual output from `src/crewai/scoring/CrewAI Scoring(5).ipynb`:
 git clone https://github.com/Ilham-Bashthotan/crewai-vs-langgraph.git
 cd crewai-vs-langgraph
 uv sync
+cp .env.example .env         # then adjust the model settings if needed
 
 ollama pull llama3.1:8b      # CrewAI scoring pipeline
 ollama pull qwen3:0.6b       # LangGraph experiments
